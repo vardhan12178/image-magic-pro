@@ -56,7 +56,7 @@ export default function Home() {
               "description": "Convert and compress images to WebP, JPEG, or PNG formats with lossless compression.",
               "applicationCategory": "MultimediaApplication",
               "operatingSystem": "All",
-              "url": "",
+              "url": "https://image-magic-pro.vercel.app/",
               "offers": {
                 "@type": "Offer",
                 "price": "0",
