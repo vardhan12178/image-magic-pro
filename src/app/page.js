@@ -7,7 +7,6 @@ import dynamic from 'next/dynamic';
 
 const ScreenshotEditor = dynamic(() => import('./components/ScreenshotEditor'), { ssr: false });
 
-
 export default function Home() {
   const [tab, setTab] = useState('convert');
   const [files, setFiles] = useState([]);
@@ -93,89 +92,149 @@ export default function Home() {
         />
       </Head>
 
-      <div className="w-full max-w-7xl mx-auto px-4">
-        <div className="flex justify-center gap-4 mb-6">
-          <button onClick={() => setTab('convert')} className={`px-4 py-2 rounded-md font-medium ${tab === 'convert' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>Upload & Convert</button>
-          <button onClick={() => setTab('paste')} className={`px-4 py-2 rounded-md font-medium ${tab === 'paste' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>Paste Screenshot</button>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white flex flex-col">
+        <header className="w-full py-8">
+          <h1 className="text-5xl md:text-6xl font-extrabold text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+            Image Magic Pro ✨
+          </h1>
+          <p className="text-center text-lg md:text-xl text-gray-300 mt-4 max-w-3xl mx-auto">
+            Transform your images effortlessly. Convert formats, apply lossless compression, edit screenshots, and more—all in one powerful, free tool. Optimize for web, save space, and enhance your visuals with ease.
+          </p>
+        </header>
 
-        <div className="min-h-[80vh]">
+        <nav className="w-full mb-8">
+          <div className="flex justify-center space-x-4 bg-gray-800/50 backdrop-blur-md rounded-full p-1 shadow-lg max-w-md mx-auto">
+            <button
+              onClick={() => setTab('convert')}
+              className={`px-6 py-2 rounded-full font-medium transition-all duration-300 ${
+                tab === 'convert' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              Upload & Convert
+            </button>
+            <button
+              onClick={() => setTab('paste')}
+              className={`px-6 py-2 rounded-full font-medium transition-all duration-300 ${
+                tab === 'paste' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              Paste Screenshot
+            </button>
+          </div>
+        </nav>
+
+        <main className="flex-grow w-full max-w-6xl mx-auto px-6 pb-12">
           {tab === 'convert' && (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-6 md:p-12 h-full flex flex-col justify-center scroll-mt-20">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
-                <div className="space-y-5 text-left">
-                  <h2 className="text-4xl font-bold text-pink-400 animate-fade-in-down">🎉 Welcome to <span className="underline decoration-purple-500">Image Magic Pro</span>!</h2>
-                  <p className="text-gray-300 text-lg">
-                    Easily convert images to <strong>WebP, JPEG, or PNG</strong>, apply <strong>lossless compression</strong>, and download them instantly as a ZIP file.
-                  </p>
-                  <ul className="text-sm md:text-base text-gray-300 space-y-2 pl-4 list-disc list-inside">
-                    <li className="text-green-400">Upload multiple images at once</li>
-                    <li className="text-green-400">Auto-detect current image formats</li>
-                    <li className="text-green-400">Lossless compression (optional)</li>
-                    <li className="text-green-400">Download results as a .zip file</li>
-                  </ul>
-                </div>
+            <div className="bg-gray-800/30 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-gray-700/50 space-y-8">
+              <div className="text-center space-y-4">
+                <h2 className="text-4xl font-bold text-blue-400">Convert Your Images Seamlessly</h2>
+                <p className="text-gray-300 text-lg">
+                  Upload single or multiple images, select your desired format (WebP for optimal web performance, JPEG for compatibility, or PNG for transparency), apply optional lossless compression to reduce file sizes without quality loss, and download everything in a convenient ZIP file.
+                </p>
+              </div>
 
-                <div className="bg-gray-800/70 backdrop-blur-md p-8 rounded-xl shadow-xl border border-purple-800">
-                  <h3 className="text-xl font-semibold mb-4 text-purple-300">⚙️ Convert Your Images</h3>
-
+              <div className="space-y-6">
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-400 mb-2 block">Select Files (Supports multiple uploads)</span>
                   <input
                     type="file"
                     multiple
                     accept="image/*"
                     onChange={(e) => setFiles(e.target.files)}
-                    className="block w-full mb-4 text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700"
+                    className="block w-full text-sm text-gray-300 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
                   />
+                </label>
 
-                  {files.length > 0 && (
-                    <>
-                      <div className="grid gap-4 mb-3">
-                        <select disabled className="w-full py-2 px-3 rounded bg-gray-700 text-gray-400">
+                {files.length > 0 && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-400 mb-2 block">Current Format (Auto-detected)</label>
+                        <select disabled className="w-full py-3 px-4 rounded-lg bg-gray-700 text-gray-300 cursor-not-allowed">
                           <option>{currentFormat.toUpperCase()}</option>
                         </select>
-                        <select className="w-full py-2 px-3 rounded bg-gray-700" value={targetFormat} onChange={(e) => setTargetFormat(e.target.value)}>
-                          <option value="webp">WebP</option>
-                          <option value="jpeg">JPEG</option>
-                          <option value="png">PNG</option>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-400 mb-2 block">Target Format</label>
+                        <select
+                          className="w-full py-3 px-4 rounded-lg bg-gray-700 text-white"
+                          value={targetFormat}
+                          onChange={(e) => setTargetFormat(e.target.value)}
+                        >
+                          <option value="webp">WebP (Best for web)</option>
+                          <option value="jpeg">JPEG (High compatibility)</option>
+                          <option value="png">PNG (Supports transparency)</option>
                         </select>
                       </div>
-                      <div className="flex items-center space-x-2 mb-4">
+                      <div className="flex items-center pt-6 md:pt-0">
                         <input
                           type="checkbox"
                           checked={compress}
                           onChange={(e) => setCompress(e.target.checked)}
-                          className="accent-purple-600 h-4 w-4"
+                          className="h-5 w-5 accent-blue-600 rounded"
                         />
-                        <label className="text-sm">Apply Lossless Compression</label>
+                        <label className="text-sm text-gray-300 ml-2">Apply Lossless Compression (Reduce size, keep quality)</label>
                       </div>
-                    </>
-                  )}
+                    </div>
+                  </>
+                )}
 
-                  <button
-                    onClick={handleConvert}
-                    disabled={loading || files.length === 0}
-                    className={`w-full py-2 rounded-md font-semibold transition-transform duration-200 ${
-                      loading || files.length === 0 ? 'bg-gray-700 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 hover:scale-105 active:scale-95'
-                    }`}
-                  >
-                    {loading ? 'Processing...' : 'Convert & Download ZIP 📂'}
-                  </button>
+                <button
+                  onClick={handleConvert}
+                  disabled={loading || files.length === 0}
+                  className={`w-full py-4 rounded-full font-bold text-lg transition-all duration-300 ${
+                    loading || files.length === 0
+                      ? 'bg-gray-700 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 hover:shadow-lg hover:scale-105'
+                  }`}
+                >
+                  {loading ? 'Processing...' : 'Convert & Download ZIP 📦'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+                <div className="bg-gray-700/50 p-4 rounded-lg text-center">
+                  <span className="text-2xl mb-2 block">📤</span>
+                  <p className="font-semibold">Upload Multiple</p>
+                  <p className="text-sm text-gray-400">Handle batches of images at once</p>
+                </div>
+                <div className="bg-gray-700/50 p-4 rounded-lg text-center">
+                  <span className="text-2xl mb-2 block">🔍</span>
+                  <p className="font-semibold">Auto-Detect</p>
+                  <p className="text-sm text-gray-400">Automatically identifies formats</p>
+                </div>
+                <div className="bg-gray-700/50 p-4 rounded-lg text-center">
+                  <span className="text-2xl mb-2 block">🗜️</span>
+                  <p className="font-semibold">Lossless Compress</p>
+                  <p className="text-sm text-gray-400">Shrink files without losing quality</p>
+                </div>
+                <div className="bg-gray-700/50 p-4 rounded-lg text-center">
+                  <span className="text-2xl mb-2 block">📥</span>
+                  <p className="font-semibold">ZIP Download</p>
+                  <p className="text-sm text-gray-400">Get all converted images in one file</p>
                 </div>
               </div>
             </div>
           )}
 
           {tab === 'paste' && pastedImage && (
-            <ScreenshotEditor image={pastedImage} name={pastedName} format={pastedFormat} setFormat={setPastedFormat} setName={setPastedName} />
+            <div className="bg-gray-800/30 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-gray-700/50">
+              <ScreenshotEditor image={pastedImage} name={pastedName} format={pastedFormat} setFormat={setPastedFormat} setName={setPastedName} />
+            </div>
           )}
 
           {tab === 'paste' && !pastedImage && (
-            <div className="bg-gray-900 p-6 md:p-12 rounded-2xl shadow-xl border border-gray-700 h-full flex flex-col items-center justify-center text-center">
-              <h2 className="text-2xl font-bold text-pink-400 mb-4">👍 Paste Your Screenshot (Ctrl+V)</h2>
-              <p className="text-gray-400">Take a screenshot and press Ctrl+V to paste here</p>
+            <div className="bg-gray-800/30 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-gray-700/50 text-center space-y-4">
+              <h2 className="text-4xl font-bold text-blue-400">Paste Your Screenshot Here</h2>
+              <p className="text-gray-300 text-lg">Simply press Ctrl+V (or Cmd+V on Mac) to paste any image from your clipboard. Edit it with filters, rotations, and save in your preferred format.</p>
+              <p className="text-gray-400">Perfect for quick captures from your screen!</p>
             </div>
           )}
-        </div>
+        </main>
+
+        <footer className="w-full py-6 text-center text-gray-500 text-sm border-t border-gray-800">
+         © 2025 Image Magic Pro. All rights reserved. Built with ❤️ by Bala Vardhan using Next.js.
+        </footer>
       </div>
     </>
   );

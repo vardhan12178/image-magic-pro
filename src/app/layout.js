@@ -24,7 +24,7 @@ export const metadata = {
     title: 'Image Magic Pro - Convert & Compress Images Effortlessly',
     description:
       'Upload, convert and compress images to multiple formats. Fast, free, and optimized for SEO and performance.',
-    url: 'https://your-domain.com', 
+    url: 'https://image-magic-pro.vercel.app', 
     siteName: 'Image Magic Pro',
     type: 'website',
     images: [
@@ -46,15 +46,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={`${inter.className} bg-gray-950 text-gray-50 flex flex-col min-h-screen`}>
         <Toaster position="top-center" reverseOrder={false} />
-        <header className="bg-gray-900 py-4 shadow-md">
-          <h1 className="text-center text-xl md:text-2xl font-semibold">🌟 Image Magic Pro</h1>
-        </header>
-        <main className="flex-grow container mx-auto px-4 py-8 flex items-center justify-center">
-          {children}
-        </main>
-        <footer className="bg-gray-900 py-4 text-center text-sm text-gray-400">
-          © {new Date().getFullYear()} Image Magic Pro. Crafted by Bala Vardhan 🚀
-        </footer>
+        {children}
       </body>
     </html>
   );
