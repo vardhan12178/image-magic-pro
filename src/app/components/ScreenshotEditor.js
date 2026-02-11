@@ -1,56 +1,99 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import clsx from "clsx";
 import toast from "react-hot-toast";
 import {
+  Download,
+  RefreshCw,
   RotateCcw,
   RotateCw,
-  Download,
-  Settings,
-  RefreshCw,
-  Layers,
+  SlidersHorizontal,
 } from "lucide-react";
-import clsx from "clsx";
 
-export default function ScreenshotEditor({
-  image,
-  name,
-  format,
-  setFormat,
-  setName,
-}) {
+const FILTERS = [
+  { name: "Original", value: "none" },
+  { name: "Mono", value: "grayscale(100%)" },
+  { name: "Warm", value: "sepia(80%) saturate(120%)" },
+  { name: "High Contrast", value: "contrast(1.35)" },
+  { name: "Bright", value: "brightness(1.15)" },
+  { name: "Cool", value: "hue-rotate(165deg) saturate(120%)" },
+  { name: "Film", value: "contrast(1.15) sepia(28%)" },
+  { name: "Invert", value: "invert(100%)" },
+];
+
+function normalizeRotation(degrees) {
+  return ((degrees % 360) + 360) % 360;
+}
+
+export default function ScreenshotEditor({ image, name, format, setFormat, setName }) {
   const canvasRef = useRef(null);
   const [rotation, setRotation] = useState(0);
   const [filter, setFilter] = useState("none");
+  const [imageMeta, setImageMeta] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas || !image) {
+      return;
+    }
+
     const ctx = canvas.getContext("2d");
+    const objectUrl = URL.createObjectURL(image);
     const img = new Image();
-    img.src = URL.createObjectURL(image);
+    img.src = objectUrl;
 
     img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
+      const normalized = normalizeRotation(rotation);
+      const radians = (normalized * Math.PI) / 180;
+      const sin = Math.abs(Math.sin(radians));
+      const cos = Math.abs(Math.cos(radians));
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.filter = filter;
+      const width = Math.ceil(img.width * cos + img.height * sin);
+      const height = Math.ceil(img.width * sin + img.height * cos);
+
+      canvas.width = width;
+      canvas.height = height;
+
+      ctx.clearRect(0, 0, width, height);
       ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.filter = filter;
+      ctx.translate(width / 2, height / 2);
+      ctx.rotate(radians);
       ctx.drawImage(img, -img.width / 2, -img.height / 2);
       ctx.restore();
+
+      setImageMeta({ width: img.width, height: img.height });
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      toast.error("Could not render pasted image.");
     };
   }, [image, rotation, filter]);
 
+  const displayedRotation = useMemo(() => normalizeRotation(rotation), [rotation]);
+
   const handleDownload = () => {
     const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
     canvas.toBlob(
       (blob) => {
+        if (!blob) {
+          toast.error("Export failed.");
+          return;
+        }
+
         const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${name}.${format}`;
-        a.click();
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${name || "capture"}.${format}`;
+        anchor.click();
+        anchor.remove();
         URL.revokeObjectURL(url);
         toast.success("Image downloaded");
       },
@@ -58,140 +101,129 @@ export default function ScreenshotEditor({
     );
   };
 
-  const handleResetAll = () => {
+  const resetAll = () => {
     setRotation(0);
     setFilter("none");
-    setName("screenshot");
+    setName("capture");
     setFormat("png");
   };
 
-  const filters = [
-    { name: "Original", value: "none" },
-    { name: "Grayscale", value: "grayscale(100%)" },
-    { name: "Sepia", value: "sepia(100%)" },
-    { name: "Invert", value: "invert(100%)" },
-    { name: "Contrast", value: "contrast(1.4)" },
-    { name: "Brighten", value: "brightness(1.2)" },
-    { name: "Saturate", value: "saturate(1.5)" },
-    { name: "Cool Hue", value: "hue-rotate(180deg)" },
-  ];
-
   return (
-    <div className="bg-zinc-900 p-6 md:p-10 border border-zinc-800 rounded-2xl text-white space-y-10">
-      <div className="text-center">
-        <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">
-          Screenshot Editor
-        </h2>
-        <p className="text-zinc-400 mt-2">Client-side editing (no upload)</p>
-      </div>
-
-      <div className="flex justify-center bg-black/40 p-4 rounded-xl border border-zinc-800">
-        <canvas
-          ref={canvasRef}
-          className="max-w-full max-h-[65vh] rounded-lg border border-zinc-700"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 border-b border-zinc-800 pb-10">
-        {/* ROTATION */}
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Layers size={18} className="text-indigo-400" /> Transform
-          </h3>
+          <h2 className="font-space text-2xl font-semibold text-white">Screenshot Editor</h2>
+          <p className="mt-1 text-sm text-slate-300">Everything below runs in your browser.</p>
+        </div>
 
-          <div className="flex flex-wrap justify-center sm:justify-start gap-4">
+        <div className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">
+          {imageMeta.width} x {imageMeta.height} px
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70 p-3">
+        <div className="flex items-center justify-center rounded-xl border border-white/5 bg-slate-900/80 p-2 sm:p-4">
+          <canvas ref={canvasRef} className="max-h-[62vh] max-w-full rounded-lg border border-white/10" />
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+          <p className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-100">
+            <SlidersHorizontal size={15} className="text-cyan-200" />
+            Transform
+          </p>
+
+          <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setRotation((prev) => prev - 90)}
-              className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 flex items-center gap-2 transition"
+              type="button"
+              onClick={() => setRotation((current) => current - 90)}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-700"
             >
-              <RotateCcw size={18} /> Left
+              <RotateCcw size={14} />
+              Left
             </button>
-
             <button
-              onClick={() => setRotation((prev) => prev + 90)}
-              className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 flex items-center gap-2 transition"
+              type="button"
+              onClick={() => setRotation((current) => current + 90)}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-700"
             >
-              <RotateCw size={18} /> Right
+              <RotateCw size={14} />
+              Right
             </button>
           </div>
 
-          <p className="text-sm text-zinc-500 mt-2 text-center sm:text-left">
-            Rotation: <span className="text-indigo-400 font-mono">{rotation}°</span>
-          </p>
+          <p className="mt-3 text-xs text-slate-400">Rotation: {displayedRotation} deg</p>
         </div>
 
-        {/* FILTERS */}
-        <div>
-          <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Settings size={18} className="text-indigo-400" /> Filters
-          </h3>
-
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-            {filters.map((f) => (
+        <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+          <p className="mb-3 text-sm font-medium text-slate-100">Filters</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {FILTERS.map((entry) => (
               <button
-                key={f.name}
-                onClick={() => setFilter(f.value)}
+                key={entry.name}
+                type="button"
+                onClick={() => setFilter(entry.value)}
                 className={clsx(
-                  "py-2 rounded-md text-xs font-medium border transition-all",
-                  filter === f.value
-                    ? "bg-indigo-600 border-indigo-400 ring-2 ring-indigo-500/40"
-                    : "bg-zinc-800 border-zinc-700 hover:bg-zinc-700"
+                  "rounded-lg border px-2 py-1.5 text-xs transition",
+                  filter === entry.value
+                    ? "border-cyan-300 bg-cyan-500/15 text-cyan-100"
+                    : "border-white/10 bg-slate-800 text-slate-200 hover:bg-slate-700"
                 )}
               >
-                {f.name}
+                {entry.name}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* DOWNLOAD OPTIONS */}
-      <div className="space-y-6">
-        <h3 className="text-xl font-semibold flex items-center gap-2">
-          <Download size={18} className="text-indigo-400" /> Download Options
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div>
-            <label className="text-sm text-zinc-400">File Name</label>
+      <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>
+            <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Filename</span>
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-2 w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              onChange={(event) => setName(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none ring-cyan-400 focus:ring"
             />
-          </div>
+          </label>
 
-          <div>
-            <label className="text-sm text-zinc-400">Format</label>
+          <label>
+            <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Format</span>
             <select
               value={format}
-              onChange={(e) => setFormat(e.target.value)}
-              className="mt-2 w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              onChange={(event) => setFormat(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none ring-cyan-400 focus:ring"
             >
               <option value="png">PNG</option>
               <option value="jpeg">JPEG</option>
               <option value="webp">WebP</option>
             </select>
-          </div>
+          </label>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-center gap-4 pt-2">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <button
+            type="button"
             onClick={handleDownload}
-            className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 rounded-full font-bold transition flex items-center gap-2 justify-center"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
           >
-            <Download size={20} /> Download
+            <Download size={15} />
+            Download
           </button>
-
           <button
-            onClick={handleResetAll}
-            className="px-8 py-4 bg-zinc-700 hover:bg-zinc-600 rounded-full font-semibold transition flex items-center gap-2 justify-center"
+            type="button"
+            onClick={resetAll}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-700"
           >
-            <RefreshCw size={18} /> Reset
+            <RefreshCw size={15} />
+            Reset
           </button>
         </div>
       </div>
     </div>
   );
 }
+

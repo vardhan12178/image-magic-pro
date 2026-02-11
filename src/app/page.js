@@ -1,306 +1,606 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import toast from "react-hot-toast";
-import Head from "next/head";
+import clsx from "clsx";
 import dynamic from "next/dynamic";
+import { AnimatePresence, motion } from "framer-motion";
+import toast from "react-hot-toast";
 import {
-  UploadCloud,
-  Zap,
-  X,
+  ArrowRight,
+  CheckCircle2,
   Download,
   FileText,
+  Gauge,
+  Globe2,
   Layers,
+  Lock,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UploadCloud,
+  Users,
+  WandSparkles,
 } from "lucide-react";
-import clsx from "clsx";
 
-const ScreenshotEditor = dynamic(
-  () => import("./components/ScreenshotEditor"),
-  { ssr: false }
-);
+const ScreenshotEditor = dynamic(() => import("./components/ScreenshotEditor"), {
+  ssr: false,
+});
+
+const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const TARGET_FORMATS = ["webp", "jpeg", "png"];
+
+const HIGHLIGHTS = [
+  { label: "Supported formats", value: "PNG, JPEG, WebP" },
+  { label: "Batch export", value: "ZIP download for multiple files" },
+  { label: "Privacy mode", value: "Screenshot editing runs in your browser" },
+];
+
+const FEATURES = [
+  {
+    title: "High-speed conversion",
+    description: "Batch convert PNG, JPEG, and WebP with production-tuned output settings.",
+    icon: Gauge,
+  },
+  {
+    title: "Privacy-first screenshot editing",
+    description: "Clipboard edits run directly in your browser with no upload required.",
+    icon: Lock,
+  },
+  {
+    title: "Built for global teams",
+    description: "Consistent outputs for engineering, product, support, and marketing workflows.",
+    icon: Globe2,
+  },
+  {
+    title: "Simple adoption",
+    description: "No account friction. Open, drop files, export, and continue your workflow.",
+    icon: Users,
+  },
+];
+
+const STEPS = [
+  {
+    title: "Drop images or paste a screenshot",
+    body: "Start with file upload for batch conversion or use clipboard mode for quick edits.",
+  },
+  {
+    title: "Choose output settings",
+    body: "Select target format and optimization profile based on quality or file-size priority.",
+  },
+  {
+    title: "Export instantly",
+    body: "Single files download directly. Multi-file jobs are packaged into a ready ZIP archive.",
+  },
+];
+
+const cardAnimation = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+  transition: { duration: 0.25, ease: "easeOut" },
+};
+
+function formatBytes(bytes) {
+  if (!bytes) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** power;
+  return `${value.toFixed(power === 0 ? 0 : 1)} ${units[power]}`;
+}
+
+function filenameFromDisposition(header) {
+  if (!header) {
+    return null;
+  }
+
+  const utfMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    return decodeURIComponent(utfMatch[1]);
+  }
+
+  const simpleMatch = header.match(/filename="?([^";]+)"?/i);
+  return simpleMatch?.[1] || null;
+}
 
 export default function Home() {
   const [tab, setTab] = useState("convert");
   const [files, setFiles] = useState([]);
-  const [currentFormat, setCurrentFormat] = useState("");
   const [targetFormat, setTargetFormat] = useState("webp");
   const [compress, setCompress] = useState(true);
   const [loading, setLoading] = useState(false);
   const [pastedImage, setPastedImage] = useState(null);
   const [pastedFormat, setPastedFormat] = useState("png");
-  const [pastedName, setPastedName] = useState("screenshot");
+  const [pastedName, setPastedName] = useState("capture");
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const handleFileChange = (newFiles) => {
-    const incoming = newFiles instanceof FileList ? Array.from(newFiles) : newFiles;
-    setFiles(incoming);
-    if (incoming.length) {
-      setCurrentFormat(incoming[0].type.split("/")[1] || "image");
+  const currentFormat = useMemo(() => {
+    if (!files.length) {
+      return "-";
     }
+
+    const first = files[0]?.type?.split("/")?.[1];
+    return first ? first.toUpperCase() : "IMAGE";
+  }, [files]);
+
+  const downloadText = useMemo(() => {
+    if (loading) {
+      return "Processing";
+    }
+
+    if (!files.length) {
+      return "Select files";
+    }
+
+    if (files.length > 1) {
+      return `Download ZIP (${files.length})`;
+    }
+
+    const base = files[0].name.replace(/\.[^/.]+$/, "");
+    return `Download ${base}.${targetFormat}`;
+  }, [files, loading, targetFormat]);
+
+  const totalSize = useMemo(
+    () => files.reduce((sum, file) => sum + (file.size || 0), 0),
+    [files]
+  );
+
+  const setIncomingFiles = (incomingFiles) => {
+    const list = incomingFiles instanceof FileList ? Array.from(incomingFiles) : incomingFiles;
+    const valid = list.filter((file) => ACCEPTED_TYPES.includes(file.type));
+
+    if (!valid.length) {
+      toast.error("Use PNG, JPEG, or WebP files.");
+      return;
+    }
+
+    if (valid.length !== list.length) {
+      toast("Some files were skipped due to unsupported format.", { icon: "!" });
+    }
+
+    setFiles(valid);
   };
 
   const clearFiles = () => setFiles([]);
 
-  const downloadText = useMemo(() => {
-    if (loading) return "Processing...";
-    if (files.length > 1) return `Download ZIP (${files.length})`;
-    if (files.length === 1)
-      return `Download ${files[0].name.split(".")[0]}.${targetFormat}`;
-    return "Select Files to Start";
-  }, [files, loading, targetFormat]);
-
   useEffect(() => {
     const handlePaste = (event) => {
       const items = event.clipboardData?.items;
-      if (!items) return;
+      if (!items) {
+        return;
+      }
+
       for (const item of items) {
-        if (item.type.indexOf("image") === 0) {
+        if (item.type.startsWith("image/")) {
           const blob = item.getAsFile();
-          setPastedImage(blob);
-          toast.success("Screenshot pasted!");
+          if (blob) {
+            setPastedImage(blob);
+            toast.success("Screenshot pasted");
+            setTab("paste");
+          }
           break;
         }
       }
     };
+
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
   }, []);
 
   const handleConvert = async () => {
-    if (!files.length || loading) return;
+    if (!files.length || loading) {
+      return;
+    }
+
     setLoading(true);
 
-    const formData = new FormData();
-    Array.from(files).forEach((file) => formData.append("files", file));
-    formData.append("targetFormat", targetFormat);
-    formData.append("compress", compress);
-
-    const filename =
-      files.length > 1
-        ? "converted.zip"
-        : files[0].name.split(".")[0] + `.${targetFormat}`;
-
     try {
-      const res = await axios.post("/api/convert", formData, {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      formData.append("targetFormat", targetFormat);
+      formData.append("compress", String(compress));
+
+      const response = await axios.post("/api/convert", formData, {
         responseType: "blob",
       });
 
-      const url = URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.click();
-      link.remove();
+      const disposition = response.headers["content-disposition"];
+      const fallbackName =
+        files.length > 1
+          ? "converted-images.zip"
+          : `${files[0].name.replace(/\.[^/.]+$/, "")}.${targetFormat}`;
+      const filename = filenameFromDisposition(disposition) || fallbackName;
 
-      toast.success("Done!");
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      anchor.remove();
+
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success("Conversion complete");
       clearFiles();
-    } catch {
-      toast.error("Conversion failed");
+    } catch (error) {
+      const message = error?.response?.data?.error || "Conversion failed";
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (e.dataTransfer.files.length) {
-      handleFileChange(e.dataTransfer.files);
-    }
-  };
-
   return (
-    <>
-      <Head>
-        <title>Image Magic Pro</title>
-      </Head>
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 opacity-70">
+        <div className="absolute -left-40 top-0 h-80 w-80 rounded-full bg-cyan-500/20 blur-3xl" />
+        <div className="absolute right-0 top-32 h-96 w-96 rounded-full bg-emerald-500/15 blur-3xl" />
+      </div>
 
-      <div className="min-h-screen bg-black text-zinc-200 flex flex-col">
-        <header className="py-6 text-center border-b border-zinc-800">
-          <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">
-           Image Magic Pro
-          </h1>
-          <p className="text-zinc-400 mt-4 px-4">
-            Simple. Fast. Built for your daily workflow.
-          </p>
-        </header>
+      <main className="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-6 sm:px-6 md:pt-10">
+        <motion.nav
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+          className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 backdrop-blur-xl"
+        >
+          <a href="#" className="inline-flex items-center gap-2 font-space text-lg font-semibold text-white">
+            <Sparkles size={17} className="text-cyan-200" />
+            Image Magic Pro
+          </a>
+          <div className="hidden items-center gap-5 text-sm text-slate-300 md:flex">
+            <a href="#features" className="hover:text-white">Features</a>
+            <a href="#workflow" className="hover:text-white">Workflow</a>
+            <a href="#app" className="hover:text-white">Try Tool</a>
+          </div>
+          <a
+            href="#app"
+            className="rounded-lg bg-cyan-400 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300"
+          >
+            Open App
+          </a>
+        </motion.nav>
 
-        <nav className="mt-6 mb-8">
-          <div className="flex justify-center max-w-md mx-auto bg-zinc-900 border border-zinc-800 rounded-full p-2 gap-2">
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut", delay: 0.05 }}
+          className="mt-6 rounded-3xl border border-white/10 bg-slate-900/75 p-6 backdrop-blur-xl sm:p-8"
+        >
+          <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-cyan-200">
+                <Sparkles size={14} />
+                Image conversion and screenshot editing
+              </span>
+              <h1 className="mt-4 font-space text-4xl font-semibold tracking-tight text-white sm:text-5xl md:text-6xl">
+                A focused image tool for everyday work.
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
+                Convert and optimize assets, then edit clipboard screenshots instantly for release notes, tickets, and docs.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <a
+                  href="#app"
+                  className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+                >
+                  Start Converting
+                  <ArrowRight size={16} />
+                </a>
+                <a
+                  href="#workflow"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/5"
+                >
+                  View Workflow
+                </a>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              {HIGHLIGHTS.map((item) => (
+                <div key={item.label} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{item.label}</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">What you can do here</p>
+            <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+              <div className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-slate-200">
+                Convert one or many images to your target format.
+              </div>
+              <div className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-slate-200">
+                Export a single file directly or receive a ZIP for batches.
+              </div>
+              <div className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-slate-200">
+                Paste screenshots and edit locally before download.
+              </div>
+            </div>
+          </div>
+        </motion.section>
+
+        <section id="features" className="mt-6 grid gap-4 md:grid-cols-2">
+          {FEATURES.map((feature, idx) => {
+            const Icon = feature.icon;
+            return (
+              <motion.article
+                key={feature.title}
+                initial={{ opacity: 0, y: 14 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.4 }}
+                transition={{ duration: 0.3, delay: idx * 0.04 }}
+                className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"
+              >
+                <div className="inline-flex rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-2.5 text-cyan-100">
+                  <Icon size={18} />
+                </div>
+                <h2 className="mt-4 font-space text-2xl font-semibold text-white">{feature.title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">{feature.description}</p>
+              </motion.article>
+            );
+          })}
+        </section>
+
+        <section id="workflow" className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6 sm:p-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-400">How it works</p>
+              <h2 className="mt-2 font-space text-3xl font-semibold text-white sm:text-4xl">A workflow your team can use in minutes</h2>
+            </div>
+            <a href="#app" className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/5">
+              Open the app section
+            </a>
+          </div>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            {STEPS.map((step, index) => (
+              <div key={step.title} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">Step {index + 1}</p>
+                <h3 className="mt-2 text-lg font-semibold text-white">{step.title}</h3>
+                <p className="mt-2 text-sm text-slate-300">{step.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="app" className="mt-6 rounded-3xl border border-white/10 bg-slate-900/72 p-5 backdrop-blur-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-5">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-400">App workspace</p>
+              <h2 className="mt-1 font-space text-2xl font-semibold text-white sm:text-3xl">Convert and edit right here</h2>
+            </div>
+            <p className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-100">
+              Workspace
+            </p>
+          </div>
+
+          <div className="mt-6 flex w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/70 p-1">
             <button
+              type="button"
               onClick={() => setTab("convert")}
               className={clsx(
-                "flex-1 py-2 rounded-full text-sm font-semibold flex items-center justify-center gap-2",
-                tab === "convert"
-                  ? "bg-indigo-600 text-white"
-                  : "text-zinc-400 hover:bg-zinc-800"
+                "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition",
+                tab === "convert" ? "bg-cyan-500 text-slate-950" : "text-slate-300 hover:bg-white/5"
               )}
             >
-              <Layers size={16} /> Upload
+              <Layers size={16} />
+              Convert
             </button>
-
             <button
+              type="button"
               onClick={() => setTab("paste")}
               className={clsx(
-                "flex-1 py-2 rounded-full text-sm font-semibold flex items-center justify-center gap-2",
-                tab === "paste"
-                  ? "bg-indigo-600 text-white"
-                  : "text-zinc-400 hover:bg-zinc-800"
+                "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition",
+                tab === "paste" ? "bg-cyan-500 text-slate-950" : "text-slate-300 hover:bg-white/5"
               )}
             >
-              <Zap size={16} /> Paste
+              <WandSparkles size={16} />
+              Screenshot Editor
             </button>
           </div>
-        </nav>
 
-        <main className="flex-grow max-w-4xl mx-auto px-4 w-full pb-12">
-          {/* UPLOAD TAB */}
-          {tab === "convert" && (
-            <div className="bg-zinc-900 p-5 md:p-8 rounded-2xl border border-zinc-800 space-y-6">
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={clsx(
-                  "relative p-10 text-center rounded-xl border-2 border-dashed transition-all",
-                  isDragOver
-                    ? "border-indigo-500 bg-indigo-900/20"
-                    : "border-zinc-700 hover:border-indigo-500"
-                )}
-              >
-                <input
-                  type="file"
-                  multiple
-                  accept="image/png, image/jpeg, image/webp"
-                  onChange={(e) => handleFileChange(e.target.files)}
-                  className="absolute inset-0 opacity-0"
-                />
-                <UploadCloud className="mx-auto h-12 w-12 text-indigo-400 mb-3" />
-                <p className="font-semibold">
-                  {isDragOver ? "Drop files…" : "Click or Drag files here"}
-                </p>
-                <p className="text-sm text-zinc-500">PNG / JPG / WebP</p>
-              </div>
-
-              {files.length > 0 && (
-                <div className="space-y-4">
-                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl">
-                    <div className="flex items-center justify-between text-sm text-zinc-400 mb-2">
-                      <span>{files.length} file(s)</span>
-                      <button
-                        onClick={clearFiles}
-                        className="text-red-400 hover:text-red-300 flex items-center gap-1"
-                      >
-                        Clear <X size={14} />
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto">
-                      {files.map((file, i) => (
-                        <span
-                          key={i}
-                          className="flex items-center gap-2 px-3 py-1 bg-zinc-800 rounded-full text-xs"
-                        >
-                          <FileText size={12} className="text-indigo-400" />
-                          {file.name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm text-zinc-400">Source</label>
-                      <input
-                        disabled
-                        value={currentFormat.toUpperCase()}
-                        className="w-full py-2 px-3 mt-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-sm text-zinc-400">Convert To</label>
-                      <select
-                        className="w-full py-2 px-3 mt-1 rounded-lg bg-zinc-950 border border-zinc-800"
-                        value={targetFormat}
-                        onChange={(e) => setTargetFormat(e.target.value)}
-                      >
-                        <option value="webp">WebP</option>
-                        <option value="jpeg">JPEG</option>
-                        <option value="png">PNG</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-6">
-                      <input
-                        type="checkbox"
-                        checked={compress}
-                        onChange={(e) => setCompress(e.target.checked)}
-                        className="h-4 w-4 accent-indigo-600"
-                      />
-                      <span className="text-sm text-zinc-300">
-                        Lossless Compression
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleConvert}
-                    disabled={loading || files.length === 0}
+          <section className="mt-4">
+            <AnimatePresence mode="wait">
+              {tab === "convert" ? (
+                <motion.div key="convert" {...cardAnimation} className="space-y-4">
+                  <div
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setIsDragOver(true);
+                    }}
+                    onDragLeave={(event) => {
+                      event.preventDefault();
+                      setIsDragOver(false);
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setIsDragOver(false);
+                      if (event.dataTransfer.files?.length) {
+                        setIncomingFiles(event.dataTransfer.files);
+                      }
+                    }}
                     className={clsx(
-                      "w-full py-3 rounded-xl text-lg font-bold flex items-center justify-center gap-2 transition-all",
-                      loading || files.length === 0
-                        ? "bg-zinc-800 text-zinc-500"
-                        : "bg-indigo-600 text-white hover:bg-indigo-700"
+                      "group relative rounded-3xl border border-dashed p-8 transition sm:p-12",
+                      isDragOver
+                        ? "border-cyan-300 bg-cyan-500/10"
+                        : "border-slate-600/70 bg-slate-900/70 hover:border-cyan-400/70"
                     )}
                   >
-                    {downloadText} <Download size={18} />
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                    <input
+                      type="file"
+                      multiple
+                      accept={ACCEPTED_TYPES.join(",")}
+                      onChange={(event) => setIncomingFiles(event.target.files)}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    />
 
-          {/* PASTE TAB */}
-          {tab === "paste" && (
-            <div className="bg-zinc-900 p-6 md:p-10 rounded-2xl border border-zinc-800">
-              {pastedImage ? (
-                <ScreenshotEditor
-                  image={pastedImage}
-                  name={pastedName}
-                  format={pastedFormat}
-                  setFormat={setPastedFormat}
-                  setName={setPastedName}
-                />
+                    <div className="mx-auto flex max-w-md flex-col items-center text-center">
+                      <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-3 text-cyan-200">
+                        <UploadCloud size={28} />
+                      </div>
+                      <h3 className="mt-4 font-space text-2xl font-semibold text-white">Upload images</h3>
+                      <p className="mt-2 text-sm text-slate-300">
+                        Drag files here or click to browse. Batch conversion is supported.
+                      </p>
+                      <div className="mt-5 flex flex-wrap justify-center gap-2 text-xs text-slate-300">
+                        <span className="rounded-full border border-white/15 bg-slate-950/70 px-3 py-1">PNG</span>
+                        <span className="rounded-full border border-white/15 bg-slate-950/70 px-3 py-1">JPEG</span>
+                        <span className="rounded-full border border-white/15 bg-slate-950/70 px-3 py-1">WebP</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {files.length > 0 ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-3xl border border-white/10 bg-slate-900/70 p-5 backdrop-blur-sm sm:p-6"
+                    >
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                          <CheckCircle2 size={16} className="text-emerald-300" />
+                          {files.length} file(s) selected - {formatBytes(totalSize)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={clearFiles}
+                          className="inline-flex items-center gap-2 rounded-full border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-200 transition hover:bg-red-500/10"
+                        >
+                          <Trash2 size={14} />
+                          Clear
+                        </button>
+                      </div>
+
+                      <div className="max-h-44 space-y-2 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                        {files.map((file) => (
+                          <div
+                            key={`${file.name}-${file.size}`}
+                            className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-slate-900/90 px-3 py-2 text-sm"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <FileText size={15} className="shrink-0 text-cyan-200" />
+                              <p className="truncate text-slate-100">{file.name}</p>
+                            </div>
+                            <span className="shrink-0 text-xs text-slate-400">{formatBytes(file.size)}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-5 grid gap-4 md:grid-cols-3">
+                        <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Source</p>
+                          <p className="mt-2 text-lg font-medium text-white">{currentFormat}</p>
+                        </div>
+
+                        <label className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Convert To</p>
+                          <select
+                            value={targetFormat}
+                            onChange={(event) => setTargetFormat(event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none ring-cyan-400 focus:ring"
+                          >
+                            {TARGET_FORMATS.map((option) => (
+                              <option key={option} value={option}>
+                                {option.toUpperCase()}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Optimization</p>
+                            <p className="mt-2 text-sm text-slate-100">Smaller output files</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={compress}
+                            onChange={(event) => setCompress(event.target.checked)}
+                            className="h-5 w-5 rounded border-white/20 bg-slate-800 accent-cyan-400"
+                          />
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleConvert}
+                        disabled={loading || files.length === 0}
+                        className={clsx(
+                          "mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold transition",
+                          loading || files.length === 0
+                            ? "cursor-not-allowed border border-white/10 bg-slate-800 text-slate-500"
+                            : "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                        )}
+                      >
+                        <Download size={17} />
+                        {downloadText}
+                        {!loading && <ArrowRight size={16} />}
+                      </button>
+                    </motion.div>
+                  ) : null}
+                </motion.div>
               ) : (
-                <div className="text-center p-10 md:p-20 border-2 border-dashed border-indigo-600 rounded-xl bg-zinc-950">
-                  <h2 className="text-3xl font-bold text-indigo-400">
-                    Paste Screenshot
-                  </h2>
-                  <p className="text-zinc-400 mt-3">
-                    Press <span className="bg-zinc-700 px-2 py-1 rounded">Ctrl+V</span> to paste
-                    from clipboard.
-                  </p>
-                </div>
+                <motion.div
+                  key="paste"
+                  {...cardAnimation}
+                  className="rounded-3xl border border-white/10 bg-slate-900/70 p-5 sm:p-6"
+                >
+                  {pastedImage ? (
+                    <ScreenshotEditor
+                      image={pastedImage}
+                      name={pastedName}
+                      format={pastedFormat}
+                      setFormat={setPastedFormat}
+                      setName={setPastedName}
+                    />
+                  ) : (
+                    <div className="rounded-3xl border border-dashed border-cyan-300/50 bg-slate-950/70 px-6 py-16 text-center sm:px-12">
+                      <div className="mx-auto w-fit rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-3 text-cyan-200">
+                        <ShieldCheck size={28} />
+                      </div>
+                      <h3 className="mt-4 font-space text-2xl font-semibold text-white">Clipboard editor is ready</h3>
+                      <p className="mx-auto mt-2 max-w-lg text-sm text-slate-300 sm:text-base">
+                        Press <span className="rounded bg-slate-800 px-2 py-1 font-mono text-xs">Ctrl+V</span> to paste a screenshot and edit it locally.
+                      </p>
+                    </div>
+                  )}
+                </motion.div>
               )}
-            </div>
-          )}
-        </main>
+            </AnimatePresence>
+          </section>
+        </section>
 
-        <footer className="py-6 text-center text-zinc-600 text-sm border-t border-zinc-800">
-          © {new Date().getFullYear()} Media Optimizer.
+        <section className="mt-6 rounded-3xl border border-white/10 bg-gradient-to-r from-cyan-500/20 to-emerald-500/15 p-6 sm:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-cyan-100">Want to use the tool now?</p>
+              <h2 className="mt-2 font-space text-3xl font-semibold text-white">Open the workspace and start converting</h2>
+              <p className="mt-2 text-sm text-slate-200">Upload files or paste a screenshot to begin.</p>
+            </div>
+            <a
+              href="#app"
+              className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
+            >
+              Open Workspace
+              <ArrowRight size={16} />
+            </a>
+          </div>
+        </section>
+
+        <footer className="mt-8 flex flex-col gap-3 border-t border-white/10 py-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+          <p>Copyright {new Date().getFullYear()} Image Magic Pro</p>
+          <div className="flex gap-4">
+            <span>Add policy/support links before public launch.</span>
+            <a href="#app" className="hover:text-slate-200">Product</a>
+          </div>
         </footer>
-      </div>
-    </>
+      </main>
+    </div>
   );
 }
