@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
@@ -28,6 +28,7 @@ const ScreenshotEditor = dynamic(() => import("./components/ScreenshotEditor"), 
 });
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const ACCEPTED_EXTENSIONS = ["png", "jpg", "jpeg", "webp"];
 const TARGET_FORMATS = ["webp", "jpeg", "png"];
 
 const HIGHLIGHTS = [
@@ -106,12 +107,53 @@ function filenameFromDisposition(header) {
   return simpleMatch?.[1] || null;
 }
 
+function isAcceptedFile(file) {
+  if (ACCEPTED_TYPES.includes(file.type)) {
+    return true;
+  }
+
+  const extension = file.name?.split(".")?.pop()?.toLowerCase();
+  return extension ? ACCEPTED_EXTENSIONS.includes(extension) : false;
+}
+
+async function getAxiosErrorMessage(error) {
+  const fallback = "Conversion failed";
+  const data = error?.response?.data;
+
+  if (!data) {
+    return fallback;
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    const mimeType = data.type || "";
+    if (mimeType.includes("application/json") || mimeType.includes("text/")) {
+      try {
+        const parsed = JSON.parse(await data.text());
+        return parsed?.error || fallback;
+      } catch {
+        return fallback;
+      }
+    }
+  }
+
+  if (typeof data === "object" && data?.error) {
+    return data.error;
+  }
+
+  return fallback;
+}
+
 export default function Home() {
   const [tab, setTab] = useState("convert");
   const [files, setFiles] = useState([]);
   const [targetFormat, setTargetFormat] = useState("webp");
   const [compress, setCompress] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [pastedImage, setPastedImage] = useState(null);
   const [pastedFormat, setPastedFormat] = useState("png");
   const [pastedName, setPastedName] = useState("capture");
@@ -150,7 +192,7 @@ export default function Home() {
 
   const setIncomingFiles = (incomingFiles) => {
     const list = incomingFiles instanceof FileList ? Array.from(incomingFiles) : incomingFiles;
-    const valid = list.filter((file) => ACCEPTED_TYPES.includes(file.type));
+    const valid = list.filter((file) => isAcceptedFile(file));
 
     if (!valid.length) {
       toast.error("Use PNG, JPEG, or WebP files.");
@@ -195,7 +237,13 @@ export default function Home() {
       return;
     }
 
+    let progressTimer;
     setLoading(true);
+    setProgress(8);
+
+    progressTimer = window.setInterval(() => {
+      setProgress((current) => (current >= 90 ? current : current + 3));
+    }, 200);
 
     try {
       const formData = new FormData();
@@ -205,6 +253,22 @@ export default function Home() {
 
       const response = await axios.post("/api/convert", formData, {
         responseType: "blob",
+        onUploadProgress: (event) => {
+          if (!event.total) {
+            return;
+          }
+
+          const uploadedPercent = Math.round((event.loaded / event.total) * 55);
+          setProgress((current) => Math.max(current, Math.min(uploadedPercent, 60)));
+        },
+        onDownloadProgress: (event) => {
+          if (!event.total) {
+            return;
+          }
+
+          const downloadPercent = 60 + Math.round((event.loaded / event.total) * 35);
+          setProgress((current) => Math.max(current, Math.min(downloadPercent, 95)));
+        },
       });
 
       const disposition = response.headers["content-disposition"];
@@ -222,13 +286,16 @@ export default function Home() {
       anchor.remove();
 
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setProgress(100);
       toast.success("Conversion complete");
       clearFiles();
     } catch (error) {
-      const message = error?.response?.data?.error || "Conversion failed";
+      const message = await getAxiosErrorMessage(error);
       toast.error(message);
     } finally {
+      window.clearInterval(progressTimer);
       setLoading(false);
+      window.setTimeout(() => setProgress(0), 250);
     }
   };
 
@@ -542,6 +609,21 @@ export default function Home() {
                         {downloadText}
                         {!loading && <ArrowRight size={16} />}
                       </button>
+
+                      {loading ? (
+                        <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/70 p-3">
+                          <div className="mb-2 flex items-center justify-between text-xs text-slate-300">
+                            <span>Converting images...</span>
+                            <span>{Math.max(1, Math.min(100, progress))}%</span>
+                          </div>
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                            <div
+                              className="h-full rounded-full bg-cyan-400 transition-[width] duration-200 ease-out"
+                              style={{ width: `${Math.max(1, Math.min(100, progress))}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </motion.div>
                   ) : null}
                 </motion.div>
