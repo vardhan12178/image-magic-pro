@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Image Magic Pro
+
+Image Magic Pro is a modern web app for quick image conversion and local screenshot editing.
+
+## Features
+
+- Convert PNG, JPEG, and WebP files
+- Batch conversion with ZIP download for multiple files
+- Single file direct download with correct output extension
+- Optional optimization mode for smaller output files
+- Clipboard screenshot editor (runs in the browser)
+- Rotation, filters, filename control, and export format selection
+- Visual conversion progress bar while processing
+
+## Tech Stack
+
+- Next.js (App Router)
+- React
+- Tailwind CSS
+- `sharp` for server-side image conversion
+- `jszip` for batch ZIP output
 
 ## Getting Started
 
-First, run the development server:
+### 1) Install dependencies
+
+```bash
+npm install
+```
+
+### 2) Run the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run dev` - Start local dev server
+- `npm run build` - Build production app
+- `npm run start` - Start production server
+- `npm run lint` - Run lint checks
 
-## Learn More
+## How Conversion Works
 
-To learn more about Next.js, take a look at the following resources:
+1. Upload one or more images from the Convert tab.
+2. Choose target format (`WEBP`, `JPEG`, `PNG`) and optimization mode.
+3. Click download/convert.
+4. Receive:
+	- one converted image for a single input, or
+	- a ZIP containing all converted files for batch input.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### `POST /api/convert`
 
-## Deploy on Vercel
+#### FormData fields
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `files`: one or more image files
+- `targetFormat`: `webp` | `jpeg` | `png`
+- `compress`: `true` | `false`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+#### Responses
+
+- `200 image/*` for single-file conversion
+- `200 application/zip` for multi-file conversion
+- `400` for bad input
+- `500` for server conversion errors
+
+## Notes
+
+- The screenshot editor operations happen in-browser on canvas.
+- Conversion endpoint uses `sharp`, so Node runtime support is required.
+- If favicon changes do not appear immediately, do a hard refresh (`Ctrl+F5`).
